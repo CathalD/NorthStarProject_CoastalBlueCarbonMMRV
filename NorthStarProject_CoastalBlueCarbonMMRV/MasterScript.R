@@ -2,6 +2,7 @@
           ## =======================================##
           ## ---- PART 1 - SETUP THE WORKSPACE ---- ##
           ## =======================================##
+
 rm(list = ls()) # - Clear existing Environment to avoid conflicts
 setwd('~/Desktop/Chem_TestFiles1')
 
@@ -71,32 +72,34 @@ source("P2_07_mmrv_reporting_bluecarbon.R")
 # clear environment
 rm(list = ls())
 # set bayesian to true
+# Step 1 - Configure the blue_carbon_config.R file for Bayesian modelling
 source("blue_carbon_config.R")
 exists("USE_BAYESIAN")  # Should be TRUE
-#Select save
-# setup for bayesian modelling
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/00c_bayesian_prior_setup_bluecarbon.R")
+#Select save and run again
 
-#Optional - Uncertainty/prior informed sampling design
-# Run prior informed sampling design using Neyman stratified sampling design (can probably run in GEE)
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/01c_bayesian_sampling_design_bluecarbon.R")
+#Step 2 - Setup workflow to handle bayesian workflow
+# setup for bayesian modelling
+source("P3_0c_bayesian_prior_setup_bluecarbon.R")
+
+# Step 3 - Run modules 1-5 
 # ===== After sample collection, proceed with standard workflow ========
 # Step 5: Start analysis
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/01_data_prep_bluecarbon.R")
+source("P1_01_data_prep_bluecarbon.R")
 # Step 6 - Initial analysis of data
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/02_exploratory_analysis_bluecarbon.R")
+source("P2_02_exploratory_analysis_bluecarbon.R")
 # Step 7 - Depth modelling
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/03_depth_harmonization_bluecarbon.R")
+source("P2_3a_Depth_Harmonization_Local.R")
 # Step 8 -Spatial Analysis
-# variograms/Kriging
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/04_raster_predictions_kriging_bluecarbon.R")
+# Kriging
+source("P2_04_raster_predictions_kriging_bluecarbon.R")
 # Random forests + remote sensing
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/05_raster_predictions_rf_bluecarbon.R")
-# ====== end of Bayesian analysis ===== #
+source("P2_05_raster_predictions_rf_bluecarbon.R")
+
+# Step 4 - Create Bayesian updated maps
 # With the new maps, create a Bayesian updated spatial map
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/06c_bayesian_posterior_estimation_bluecarbon.R")
+source("P3_06c_bayesian_posterior_estimation_bluecarbon.R")
 # Reporting
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/07b_comprehensive_standards_report.R")
+source("P3_07b_comprehensive_standards_report.R")
 
 
           ## ======================================================##
@@ -109,7 +112,7 @@ source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/07b_comprehe
 # Now run module 3b for global hamronization
 source("P4_3b_Depth_Harmonization_Global.R")
 
-## Make sure the data_globel folder has file "global_cores_with_gee_covariates.csv"
+## Make sure the data_global folder has file "global_cores_with_gee_covariates.csv"
 ## make sure in data_processed folder there is file "cores_harmonized_bluecarbon.csv"
 ## Make sure covariates from Global data match Local datafiles
 
@@ -127,19 +130,20 @@ source("P4_Transfer_Learning_Visualizations.R")
 # Part 5 - Temporal and scenario modeling
 #==== Set-up ======#
 # Configure data
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/blue_carbon_config.R")
+# Set-up configuration to handle scenario and temporal modelling
+source("blue_carbon_config.R")
 # Run scenario builder....
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/08a_scenario_builder_bluecarbon.R")
+source("P5_00_scenario_builder_bluecarbon.R")
 
 #==== run module 8 ===== #
 # Run temporal data harmonization
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/08_temporal_data_harmonization.R")
+source("P5_08_temporal_data_harmonization.R")
 
 #====== run module 9 ======#
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/09_additionality_temporal_analysis.R")
+source("P5_09_additionality_temporal_analysis.R")
 
 # ====== run module 10 ====
-source("~/Desktop/CompositeSampling_CoastalBlueCarbon_Wrokflow-main/10_vm0033_final_verification.R")
+source("P5_10_vm0033_final_verification.R")
 
 
 
