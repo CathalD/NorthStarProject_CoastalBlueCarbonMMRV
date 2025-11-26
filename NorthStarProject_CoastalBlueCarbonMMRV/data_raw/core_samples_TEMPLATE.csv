@@ -1,0 +1,43 @@
+core_id,depth_top_cm,depth_bottom_cm,soc_g_kg,bulk_density_g_cm3,sample_notes
+HR_001,0,5,45.2,0.85,Surface layer
+HR_001,5,10,42.1,0.87,
+HR_001,10,15,38.5,0.89,
+HR_001,15,20,35.2,0.91,
+HR_001,20,25,32.8,0.93,
+HR_001,25,30,30.5,0.95,High resolution - fine intervals
+COMP_001,0,15,41.8,0.87,Composite sample 0-15cm
+COMP_001,15,30,33.2,0.92,Composite sample 15-30cm
+COMP_001,30,50,28.5,0.98,Composite sample 30-50cm
+COMP_001,50,100,22.1,1.05,Composite sample 50-100cm
+HR_002,0,5,52.3,0.75,Surface layer - Lower marsh
+HR_002,5,10,48.9,0.78,
+HR_002,10,15,45.2,0.81,
+HR_002,15,20,42.1,0.84,
+HR_002,20,25,39.5,0.86,
+HR_002,25,30,37.2,0.89,
+COMP_002,0,15,48.5,0.78,Paired with HR_002
+COMP_002,15,30,40.2,0.85,
+COMP_002,30,50,34.8,0.92,
+COMP_002,50,100,26.3,1.02,
+COMP_003,0,15,35.6,0.82,Unpaired composite
+COMP_003,15,30,31.2,0.88,
+COMP_003,30,50,27.5,0.95,
+COMP_003,50,100,21.8,1.08,
+COMP_004,0,15,28.4,0.65,Underwater veg - unpaired
+COMP_004,15,30,24.7,0.68,
+COMP_004,30,50,20.3,0.72,
+COMP_004,50,100,15.2,0.78,
+BASE_HR_001,0,5,38.5,0.88,Baseline HR core
+BASE_HR_001,5,10,36.2,0.90,
+BASE_HR_001,10,15,34.1,0.92,
+BASE_HR_001,15,20,32.5,0.94,
+BASE_HR_001,20,25,30.8,0.96,
+BASE_HR_001,25,30,29.2,0.98,
+BASE_COMP_001,0,15,36.3,0.90,Baseline paired composite
+BASE_COMP_001,15,30,31.1,0.95,
+BASE_COMP_001,30,50,26.8,1.01,
+BASE_COMP_001,50,100,21.5,1.10,
+BASE_COMP_002,0,15,32.1,0.84,Baseline unpaired
+BASE_COMP_002,15,30,28.5,0.90,
+BASE_COMP_002,30,50,24.3,0.97,
+BASE_COMP_002,50,100,19.8,1.05,

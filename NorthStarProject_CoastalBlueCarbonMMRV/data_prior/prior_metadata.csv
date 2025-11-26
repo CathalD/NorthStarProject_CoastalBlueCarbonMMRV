@@ -1,0 +1,2 @@
+project,processing_date,crs,resolution_m,prior_source,gee_export_date,uncertainty_inflation,n_depths,total_area_ha
+BC_Coastal_BlueCarbon_2024,2025-11-16,EPSG:3347,30,SoilGrids 250m v2.0 (Poggio et al. 2021),User to fill in,1.2,4,736.38

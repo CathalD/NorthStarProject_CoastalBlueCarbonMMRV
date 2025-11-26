@@ -1,0 +1,10 @@
+core_id,longitude,latitude,stratum,core_type,paired_with,scenario_type,monitoring_year
+HR_001,-123.456,48.123,Mid Marsh,HR,COMP_001,PROJECT,2024
+COMP_001,-123.456,48.123,Mid Marsh,Paired Composite,HR_001,PROJECT,2024
+HR_002,-123.457,48.124,Lower Marsh,HR,COMP_002,PROJECT,2024
+COMP_002,-123.457,48.124,Lower Marsh,Paired Composite,HR_002,PROJECT,2024
+COMP_003,-123.458,48.125,Upper Marsh,Unpaired Composite,NA,PROJECT,2024
+COMP_004,-123.459,48.126,Underwater Vegetation,Unpaired Composite,NA,PROJECT,2024
+BASE_HR_001,-123.460,48.127,Mid Marsh,HR,BASE_COMP_001,BASELINE,2024
+BASE_COMP_001,-123.460,48.127,Mid Marsh,Paired Composite,BASE_HR_001,BASELINE,2024
+BASE_COMP_002,-123.461,48.128,Lower Marsh,Unpaired Composite,NA,BASELINE,2024

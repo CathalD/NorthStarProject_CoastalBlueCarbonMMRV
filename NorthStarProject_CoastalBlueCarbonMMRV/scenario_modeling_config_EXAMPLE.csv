@@ -1,0 +1,8 @@
+target_scenario,modeling_method,base_scenario_1,base_scenario_2,years_post_restoration,ecosystem_type,region,include_in_analysis,notes
+BASELINE,copy_scenario,DEGRADED,NA,0,salt_marsh,BC_coast,TRUE,Current degraded condition as baseline
+PROJECT_Y0,copy_scenario,DEGRADED,NA,0,salt_marsh,BC_coast,TRUE,Immediately post-restoration (same as degraded)
+PROJECT_Y5,reference_trajectory,DEGRADED,REFERENCE,5,salt_marsh,BC_coast,TRUE,5 years post-restoration projection
+PROJECT_Y10,reference_trajectory,DEGRADED,REFERENCE,10,salt_marsh,BC_coast,TRUE,10 years post-restoration projection
+PROJECT_Y15,reference_trajectory,DEGRADED,REFERENCE,15,salt_marsh,BC_coast,TRUE,15 years post-restoration projection
+PROJECT_Y5,literature_lookup,NA,NA,5,seagrass,BC_coast,FALSE,Alternative: use literature values only
+REFERENCE,literature_lookup,NA,NA,NA,salt_marsh,BC_coast,FALSE,Alternative: use literature for reference condition

@@ -1,0 +1,19 @@
+ecosystem,region,latitude_range,scenario_type,years_post_restoration,carbon_stock_0_100_mean_Mg_ha,carbon_stock_0_100_se,accumulation_rate_Mg_ha_yr,accumulation_rate_se,recovery_constant_k,source_citation,notes
+salt_marsh,BC_coast,48-50,reference_natural,NA,180.5,24.8,NA,NA,NA,"Gailis et al. 2021. Geoderma Regional",Healthy Salish Sea tidal marshes
+salt_marsh,BC_coast,48-50,degraded_drained,NA,45.2,12.3,NA,NA,NA,"Gailis et al. 2021. Geoderma Regional",Drained/diked historical marshes
+salt_marsh,BC_coast,48-50,disturbed,NA,72.4,15.6,NA,NA,NA,"Crooks et al. 2014. PLOS ONE",Moderately impacted marshes
+salt_marsh,BC_coast,48-50,restored_3yr,3,68.5,14.2,7.8,1.8,0.15,"Lievesley et al. 2016. Ecological Engineering",Dike breach restoration sites
+salt_marsh,BC_coast,48-50,restored_5yr,5,95.3,18.5,10.0,2.1,0.15,"Lievesley et al. 2016. Ecological Engineering",Established restoration sites
+salt_marsh,BC_coast,48-50,restored_10yr,10,142.8,22.4,9.7,2.0,0.15,"Lievesley et al. 2016. Ecological Engineering",Mature restoration sites
+seagrass,BC_coast,48-52,reference_eelgrass,NA,94.6,17.8,NA,NA,NA,"Prentice et al. 2019. Frontiers in Marine Science",Healthy Zostera marina meadows
+seagrass,BC_coast,48-52,degraded_sparse,NA,28.4,8.5,NA,NA,NA,"Prentice et al. 2019. Frontiers in Marine Science",Sparse/declining eelgrass
+seagrass,BC_coast,48-52,degraded_lost,NA,12.5,4.2,NA,NA,NA,"Prentice et al. 2019. Frontiers in Marine Science",Historic eelgrass areas (bare sediment)
+seagrass,BC_coast,48-52,restored_1yr,1,22.8,6.8,10.3,2.5,0.12,"Nahirnick et al. 2020. Marine Environmental Research",Recent eelgrass transplants
+seagrass,BC_coast,48-52,restored_3yr,3,45.2,11.4,10.9,2.3,0.12,"Nahirnick et al. 2020. Marine Environmental Research",Established transplants
+seagrass,BC_coast,48-52,restored_5yr,5,62.8,13.9,10.0,2.1,0.12,"Nahirnick et al. 2020. Marine Environmental Research",Mature transplanted meadows
+mudflat,BC_coast,48-50,reference_natural,NA,64.8,13.5,NA,NA,NA,"Crooks et al. 2014. PLOS ONE",Natural Salish Sea mudflats
+mudflat,BC_coast,48-50,disturbed,NA,48.3,10.8,NA,NA,NA,"Crooks et al. 2014. PLOS ONE",Impacted/compacted mudflats
+mudflat,BC_coast,48-50,degraded,NA,35.6,9.2,NA,NA,NA,"Crooks et al. 2014. PLOS ONE",Heavily disturbed mudflats
+salt_marsh,BC_coast,48-50,baseline_typical,NA,58.5,14.0,NA,NA,NA,"Schile et al. 2017. Global Change Biology",Typical current condition BC marshes
+seagrass,BC_coast,48-52,baseline_typical,NA,35.2,9.8,NA,NA,NA,"Postlethwaite et al. 2018. Estuaries and Coasts",Typical current condition BC eelgrass
+mudflat,BC_coast,48-50,baseline_typical,NA,52.4,11.2,NA,NA,NA,"Crooks et al. 2014. PLOS ONE",Typical current condition BC mudflats

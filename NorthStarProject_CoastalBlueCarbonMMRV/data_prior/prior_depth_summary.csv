@@ -1,0 +1,5 @@
+depth_cm,mean_file,se_file,mean_carbon_stock_kgm2,sd_carbon_stock_kgm2,mean_se_kgm2,cv_pct,n_pixels,area_ha,source
+7.5,carbon_stock_prior_mean_7.5cm.tif,carbon_stock_prior_se_7.5cm.tif,61.24127464648769,6.559787638153128,22.04685888115569,36.000000013749094,8182,736.38,SoilGrids_v2.0 (regionally_scaled_if_Sothe_available)
+22.5,carbon_stock_prior_mean_22.5cm.tif,carbon_stock_prior_se_22.5cm.tif,30.80984737855011,6.4885343474630135,11.091545019450498,35.99999988046827,8182,736.38,SoilGrids_v2.0 (regionally_scaled_if_Sothe_available)
+40,carbon_stock_prior_mean_40.0cm.tif,carbon_stock_prior_se_40.0cm.tif,32.27827034029218,7.899765755389876,11.620177306769909,35.999999951251176,8182,736.38,SoilGrids_v2.0 (regionally_scaled_if_Sothe_available)
+75,carbon_stock_prior_mean_75.0cm.tif,carbon_stock_prior_se_75.0cm.tif,50.878356197415926,11.634741685888693,18.316208141189833,35.99999982334354,8182,736.38,SoilGrids_v2.0 (regionally_scaled_if_Sothe_available)
