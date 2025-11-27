@@ -2,7 +2,10 @@
 # MODULE 0X: COMPREHENSIVE WORKFLOW COMPARISON (FIXED)
 # ============================================================================
 # PURPOSE: Compare carbon stock estimates across all workflow components
-# FIXED: Handles different raster extents by resampling to common grid
+# FIXED: 
+#   1. Handles different raster extents by resampling to common grid
+#   2. Corrected Bayesian data path (uses raster files, not RDS)
+#   3. Corrected Transfer Learning data path (uses outputs/carbon_stocks/predictions/)
 # ============================================================================
 
 # ============================================================================
@@ -108,9 +111,12 @@ workflow_available <- list(
                               pattern = "^carbon_stock_.*\\.tif$")) > 0,
   rf = length(list.files("outputs/predictions/rf", 
                          pattern = "^carbon_stock_rf_.*\\.tif$")) > 0,
-  bayesian = file.exists("outputs/bayesian/posterior_estimates.rds"),
-  transfer_learning = length(list.files("outputs/predictions/transfer_learning", 
-                                        pattern = "^carbon_stock_tl_.*\\.tif$")) > 0
+  # FIXED: Bayesian now checks for raster files, not RDS
+  bayesian = length(list.files("outputs/predictions/posterior",
+                               pattern = "^carbon_stock_posterior_mean_.*\\.tif$")) > 0,
+  # FIXED: Transfer learning checks correct directory
+  transfer_learning = length(list.files("outputs/carbon_stocks/predictions", 
+                                        pattern = "^depth_.*_predictions\\.tif$")) > 0
 )
 
 log_message("Component availability:")
@@ -331,7 +337,7 @@ if (workflow_available$rf) {
 }
 
 # ============================================================================
-# LOAD BAYESIAN POSTERIOR (MODULE 06c)
+# LOAD BAYESIAN POSTERIOR (MODULE 06c) - FIXED
 # ============================================================================
 
 bayesian_summary <- NULL
@@ -340,46 +346,57 @@ bayesian_raster <- NULL
 if (workflow_available$bayesian) {
   log_message("Loading Bayesian posterior estimates...")
   
-  bayesian_post <- readRDS("outputs/bayesian/posterior_estimates.rds")
+  # FIXED: Bayesian module saves individual rasters, not a single RDS file
+  # Look for posterior mean rasters in outputs/predictions/posterior/
+  bayesian_files <- list.files("outputs/predictions/posterior",
+                               pattern = "^carbon_stock_posterior_mean_.*\\.tif$",
+                               full.names = TRUE)
   
-  # Check if posterior rasters exist
-  if ("posterior_mean" %in% names(bayesian_post)) {
+  if (length(bayesian_files) > 0) {
+    log_message(sprintf("  Found %d Bayesian posterior rasters", length(bayesian_files)))
     
-    # Load posterior mean raster (should already be total 0-100cm)
-    if (inherits(bayesian_post$posterior_mean, "SpatRaster")) {
-      bayesian_raster <- bayesian_post$posterior_mean
-    } else if (is.character(bayesian_post$posterior_mean) && 
-               file.exists(bayesian_post$posterior_mean)) {
-      bayesian_raster <- rast(bayesian_post$posterior_mean)
+    # Load all depth layers
+    bayesian_layers <- lapply(bayesian_files, rast)
+    names(bayesian_layers) <- basename(bayesian_files)
+    
+    # Match extents before summing
+    if (length(bayesian_layers) > 1) {
+      bayesian_layers <- match_raster_extents(bayesian_layers)
+      bayesian_raster <- Reduce(`+`, bayesian_layers)
+    } else {
+      bayesian_raster <- bayesian_layers[[1]]
     }
     
-    if (!is.null(bayesian_raster)) {
-      # Assume already in Mg/ha
-      bayesian_vals <- values(bayesian_raster, mat = FALSE)
-      bayesian_vals <- bayesian_vals[!is.na(bayesian_vals)]
-      
-      bayesian_summary <- data.frame(
-        component = "Bayesian Posterior",
-        mean_stock_kg_m2 = mean(bayesian_vals, na.rm = TRUE) / 10,
-        sd_stock_kg_m2 = sd(bayesian_vals, na.rm = TRUE) / 10,
-        min_stock_kg_m2 = min(bayesian_vals, na.rm = TRUE) / 10,
-        max_stock_kg_m2 = max(bayesian_vals, na.rm = TRUE) / 10,
-        mean_stock_Mg_ha = mean(bayesian_vals, na.rm = TRUE),
-        sd_stock_Mg_ha = sd(bayesian_vals, na.rm = TRUE),
-        n_cores = NA,
-        n_samples = length(bayesian_vals)
-      )
-      
-      log_message(sprintf("  Bayesian: %.1f ± %.1f Mg C/ha (%d cells)", 
-                          bayesian_summary$mean_stock_Mg_ha,
-                          bayesian_summary$sd_stock_Mg_ha,
-                          bayesian_summary$n_samples))
-    }
+    # Convert from kg/m² to Mg/ha
+    bayesian_raster <- bayesian_raster * 10
+    
+    # Calculate statistics
+    bayesian_vals <- values(bayesian_raster, mat = FALSE)
+    bayesian_vals <- bayesian_vals[!is.na(bayesian_vals)]
+    
+    bayesian_summary <- data.frame(
+      component = "Bayesian Posterior",
+      mean_stock_kg_m2 = mean(bayesian_vals, na.rm = TRUE) / 10,
+      sd_stock_kg_m2 = sd(bayesian_vals, na.rm = TRUE) / 10,
+      min_stock_kg_m2 = min(bayesian_vals, na.rm = TRUE) / 10,
+      max_stock_kg_m2 = max(bayesian_vals, na.rm = TRUE) / 10,
+      mean_stock_Mg_ha = mean(bayesian_vals, na.rm = TRUE),
+      sd_stock_Mg_ha = sd(bayesian_vals, na.rm = TRUE),
+      n_cores = NA,
+      n_samples = length(bayesian_vals)
+    )
+    
+    log_message(sprintf("  Bayesian: %.1f ± %.1f Mg C/ha (%d cells)", 
+                        bayesian_summary$mean_stock_Mg_ha,
+                        bayesian_summary$sd_stock_Mg_ha,
+                        bayesian_summary$n_samples))
+  } else {
+    log_message("  No Bayesian posterior rasters found", "WARNING")
   }
 }
 
 # ============================================================================
-# LOAD TRANSFER LEARNING PREDICTIONS (MODULE 05 TL)
+# LOAD TRANSFER LEARNING PREDICTIONS (MODULE 05 TL) - FIXED
 # ============================================================================
 
 tl_summary <- NULL
@@ -388,47 +405,70 @@ tl_raster <- NULL
 if (workflow_available$transfer_learning) {
   log_message("Loading Transfer Learning predictions...")
   
-  # Find all TL stock rasters
-  tl_files <- list.files("outputs/predictions/transfer_learning",
-                         pattern = "^carbon_stock_tl_.*\\.tif$",
+  # FIXED: Transfer learning saves prediction rasters in outputs/carbon_stocks/predictions/
+  # Each file is a 4-band raster: Global_Prior, Local_Only, Transfer_Final, Difference
+  # We want band 3 (Transfer_Final) from each depth
+  
+  tl_files <- list.files("outputs/carbon_stocks/predictions",
+                         pattern = "^depth_.*_predictions\\.tif$",
                          full.names = TRUE)
   
   if (length(tl_files) > 0) {
-    # Load all depth layers
-    tl_layers <- lapply(tl_files, rast)
-    names(tl_layers) <- basename(tl_files)
+    log_message(sprintf("  Found %d Transfer Learning prediction files", length(tl_files)))
     
-    # Match extents before summing
-    if (length(tl_layers) > 1) {
-      tl_layers <- match_raster_extents(tl_layers)
-      tl_raster <- Reduce(`+`, tl_layers)
-    } else {
-      tl_raster <- tl_layers[[1]]
+    # Extract Transfer_Final band (band 3) from each file
+    tl_layers <- list()
+    for (f in tl_files) {
+      # Extract depth from filename (e.g., "depth_7.5_predictions.tif" -> 7.5)
+      depth_str <- gsub(".*depth_([0-9.]+)_predictions\\.tif", "\\1", basename(f))
+      
+      # Load raster and extract band 3 (Transfer_Final)
+      r <- rast(f)
+      
+      # Check if this is a multi-band raster
+      if (nlyr(r) >= 3) {
+        tl_layers[[depth_str]] <- r[[3]]  # Band 3 = Transfer_Final
+        log_message(sprintf("    Loaded Transfer_Final for depth %s cm", depth_str))
+      } else {
+        log_message(sprintf("    WARNING: File %s has fewer than 3 bands, skipping", basename(f)), "WARNING")
+      }
     }
     
-    # Convert from kg/m² to Mg/ha
-    tl_raster <- tl_raster * 10
-    
-    # Calculate statistics
-    tl_vals <- values(tl_raster, mat = FALSE)
-    tl_vals <- tl_vals[!is.na(tl_vals)]
-    
-    tl_summary <- data.frame(
-      component = "Transfer Learning",
-      mean_stock_kg_m2 = mean(tl_vals, na.rm = TRUE) / 10,
-      sd_stock_kg_m2 = sd(tl_vals, na.rm = TRUE) / 10,
-      min_stock_kg_m2 = min(tl_vals, na.rm = TRUE) / 10,
-      max_stock_kg_m2 = max(tl_vals, na.rm = TRUE) / 10,
-      mean_stock_Mg_ha = mean(tl_vals, na.rm = TRUE),
-      sd_stock_Mg_ha = sd(tl_vals, na.rm = TRUE),
-      n_cores = NA,
-      n_samples = length(tl_vals)
-    )
-    
-    log_message(sprintf("  Transfer Learning: %.1f ± %.1f Mg C/ha (%d cells)", 
-                        tl_summary$mean_stock_Mg_ha,
-                        tl_summary$sd_stock_Mg_ha,
-                        tl_summary$n_samples))
+    if (length(tl_layers) > 0) {
+      # Match extents before summing
+      if (length(tl_layers) > 1) {
+        tl_layers <- match_raster_extents(tl_layers)
+        tl_raster <- Reduce(`+`, tl_layers)
+      } else {
+        tl_raster <- tl_layers[[1]]
+      }
+      
+      # Convert from kg/m² to Mg/ha
+      tl_raster <- tl_raster * 10
+      
+      # Calculate statistics
+      tl_vals <- values(tl_raster, mat = FALSE)
+      tl_vals <- tl_vals[!is.na(tl_vals)]
+      
+      tl_summary <- data.frame(
+        component = "Transfer Learning",
+        mean_stock_kg_m2 = mean(tl_vals, na.rm = TRUE) / 10,
+        sd_stock_kg_m2 = sd(tl_vals, na.rm = TRUE) / 10,
+        min_stock_kg_m2 = min(tl_vals, na.rm = TRUE) / 10,
+        max_stock_kg_m2 = max(tl_vals, na.rm = TRUE) / 10,
+        mean_stock_Mg_ha = mean(tl_vals, na.rm = TRUE),
+        sd_stock_Mg_ha = sd(tl_vals, na.rm = TRUE),
+        n_cores = NA,
+        n_samples = length(tl_vals)
+      )
+      
+      log_message(sprintf("  Transfer Learning: %.1f ± %.1f Mg C/ha (%d cells)", 
+                          tl_summary$mean_stock_Mg_ha,
+                          tl_summary$sd_stock_Mg_ha,
+                          tl_summary$n_samples))
+    }
+  } else {
+    log_message("  No Transfer Learning prediction files found", "WARNING")
   }
 }
 
@@ -717,7 +757,7 @@ img { display: block; margin: 20px auto; }
 </head>
 <body>
 
-<h1>🔬 Comprehensive Workflow Comparison</h1>
+<h1>🔬 Comprehensive Workflow Comparison (FIXED)</h1>
 <p><strong>Project:</strong> %s<br>
 <strong>Generated:</strong> %s<br>
 <strong>Components Compared:</strong> %d</p>
@@ -756,8 +796,15 @@ img { display: block; margin: 20px auto; }
 <li>Consider Bayesian posterior if available (best uncertainty quantification)</li>
 </ul>
 
+<h2>Technical Notes (FIXED)</h2>
+<p><strong>Path corrections made:</strong></p>
+<ul>
+<li><strong>Bayesian data:</strong> Now loads from <code>outputs/predictions/posterior/carbon_stock_posterior_mean_*.tif</code> instead of non-existent RDS file</li>
+<li><strong>Transfer Learning data:</strong> Now loads from <code>outputs/carbon_stocks/predictions/depth_*_predictions.tif</code> (band 3: Transfer_Final)</li>
+</ul>
+
 <hr>
-<p><em>Generated by Blue Carbon MMRV Workflow | Comprehensive Comparison Module</em></p>
+<p><em>Generated by Blue Carbon MMRV Workflow | Comprehensive Comparison Module (FIXED)</em></p>
 
 </body>
 </html>
@@ -827,6 +874,10 @@ if (sd(comparison_table$mean_stock_Mg_ha) / mean(comparison_table$mean_stock_Mg_
   cat("    → Investigate causes: sample size, model assumptions, data quality\n")
   cat("    → Use most conservative estimate for crediting\n")
 }
+
+cat("\nPATH FIXES APPLIED:\n")
+cat("  ✓ Bayesian: Now loads from outputs/predictions/posterior/ (raster files)\n")
+cat("  ✓ Transfer Learning: Now loads from outputs/carbon_stocks/predictions/ (band 3)\n")
 
 cat("\n")
 
