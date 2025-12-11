@@ -1,13 +1,9 @@
 # Blue Carbon MMRV Workflow
-## Comprehensive Implementation Guide
-
-**Version:** 1.0  
+ 
 **Date:** November 2024  
 **Language:** R  
 **Platform:** RStudio  
-
----
-
+-----
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -23,15 +19,14 @@
 
 ## Overview
 
-This workflow provides a complete **Monitoring, Reporting, and Verification (MMRV)** system for coastal blue carbon ecosystems (saltmarsh, seagrass, mangrove) compliant with international carbon crediting standards. The system processes field sediment core data through spatial modeling to produce verification-ready carbon stock estimates with quantified uncertainty.
+This workflow provides a **Measurment, Monitoring, Reporting, and Verification (MMRV)** system for coastal blue carbon ecosystems (saltmarsh, seagrass and eelgrass) compliant with international carbon crediting and MMRV standards. The system processes field sediment core data through spatial modeling to produce verification-ready carbon stock estimates with quantified uncertainty.
 
 ### Key Features
 
-- **VM0033 Compliant:** Follows Verra's Methodology for Tidal Wetland and Seagrass Restoration (VM0033 v2.0)
-- **Multi-Standard Support:** ORRAA, IPCC Wetlands Supplement, Canadian Blue Carbon Network
+- **VM0033 Compliant:** Follows Verra's Methodology for Tidal Wetland and Seagrass Restoration (VM0033 v2.1)
+- ** Includes guidance from ORRAA, IPCC Wetlands Supplement, Canadian Blue Carbon Network
 - **Spatial Modeling:** Kriging (geostatistical) and Random Forest (machine learning) approaches
 - **Uncertainty Quantification:** Conservative estimates using 95% confidence intervals
-- **Scenario Modeling:** Restoration trajectory projections for crediting calculations
 - **Bayesian Integration:** Optional incorporation of global prior knowledge
 - **Transfer Learning:** Leverage global datasets when local samples are limited
 
@@ -44,9 +39,7 @@ The workflow implements peer-reviewed methods for blue carbon assessment:
 3. **Machine Learning:** Random Forest with Area of Applicability (Meyer & Pebesma 2021)
 4. **Bayesian Updating:** Prior knowledge integration (Wadoux et al. 2021)
 5. **Carbon Stock Calculation:** VM0033 methodology with conservative uncertainty bounds
-
 ---
-
 ## Scientific Foundation
 
 ### Primary Methodologies
