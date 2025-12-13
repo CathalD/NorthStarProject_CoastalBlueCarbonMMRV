@@ -17,49 +17,83 @@ PROJECT_LOCATION <- "Chemainus Estuary, British Columbia, Canada"
 PROJECT_DESCRIPTION <- "Blue carbon monitoring for carbon credit development - VM0033 compliant assessment of coastal salt marsh and eelgrass restoration"
 
 # ============================================================================
-# ECOSYSTEM STRATIFICATION
+# TERRESTRIAL ECOSYSTEM STRATIFICATION (Two-Tier)
 # ============================================================================
-
-# Valid ecosystem strata (must match GEE stratification tool)
+# This section supports landscape-scale MMRV across multiple ecosystem types.
+# Two-tier stratification combines Ecosystem Type with Management History.
 #
 # FILE NAMING CONVENTION:
 #   Module 05 auto-detects GEE stratum masks using this pattern:
 #   "Stratum Name" → stratum_name.tif in data_raw/gee_strata/
 #
 # Examples:
-#   "Upper Marsh"           → upper_marsh.tif
-#   "Underwater Vegetation" → underwater_vegetation.tif
-#   "Emerging Marsh"        → emerging_marsh.tif
+#   "Wetland_Forested_Reference" → wetland_forested_reference.tif
+#   "Forest_Deciduous_Restored"  → forest_deciduous_restored.tif
 #
 # CUSTOMIZATION OPTIONS:
-#   1. Simple: Edit VALID_STRATA below and export GEE masks with matching names
-#   2. Advanced: Create stratum_definitions.csv in project root for custom file names
-#      and optional metadata (see stratum_definitions_EXAMPLE.csv template)
+#   1. Simple: Edit ECOSYSTEM_TYPES and MANAGEMENT_CLASSES below
+#   2. Advanced: Create stratum_definitions.csv in project root for custom mappings
 #
 # See README section "Customizing Ecosystem Strata" for full details.
 #
-VALID_STRATA <- c(
-  "IM",           # Intact Marsh
-  "NM",             # New Marsh
-  "MF"           # Mudflat
+
+# Tier 1: Ecosystem Types
+ECOSYSTEM_TYPES <- c("Wetland_Forested", "Wetland_Emergent", "Grassland_Native",
+                     "Grassland_Restored", "Forest_Deciduous", "Forest_Coniferous")
+
+# Tier 2: Management/Disturbance History
+MANAGEMENT_CLASSES <- c("Reference", "Restored", "Prescribed_Burn",
+                        "Disturbed_Recent", "Disturbed_Historic", "Agricultural_Former")
+
+# Generate Stratification Matrix (Two-Tier Combination)
+suppressPackageStartupMessages(library(dplyr))
+VALID_STRATA <- expand.grid(ecosystem = ECOSYSTEM_TYPES, management = MANAGEMENT_CLASSES) %>%
+  mutate(stratum = paste(ecosystem, management, sep = "_")) %>%
+  pull(stratum)
+
+# Legacy coastal strata (for backward compatibility)
+LEGACY_COASTAL_STRATA <- c("IM", "NM", "MF")
+
+# Stratum colors for plotting (auto-generated for new strata)
+# Base colors by ecosystem type
+ECOSYSTEM_BASE_COLORS <- c(
+  "Wetland_Forested" = "#1B4F72",    # Dark blue
+  "Wetland_Emergent" = "#2E86AB",    # Light blue
+  "Grassland_Native" = "#A8D08D",    # Light green
+  "Grassland_Restored" = "#70AD47",  # Medium green
+  "Forest_Deciduous" = "#538135",    # Dark green
+  "Forest_Coniferous" = "#375623"    # Very dark green
 )
 
-# Stratum colors for plotting (match GEE tool)
-STRATUM_COLORS <- c(
-  "IM" = "#FFFF99",
-  "NM" = "#99FF99",
-  "MF" = "#33CC33"
+# Generate stratum colors based on ecosystem type
+STRATUM_COLORS <- setNames(
+  sapply(VALID_STRATA, function(s) {
+    eco_type <- gsub("_(Reference|Restored|Prescribed_Burn|Disturbed_Recent|Disturbed_Historic|Agricultural_Former)$", "", s)
+    if (eco_type %in% names(ECOSYSTEM_BASE_COLORS)) {
+      ECOSYSTEM_BASE_COLORS[[eco_type]]
+    } else {
+      "#808080"  # Default gray
+    }
+  }),
+  VALID_STRATA
 )
 
+# Add legacy colors for backward compatibility
+STRATUM_COLORS <- c(STRATUM_COLORS, c("IM" = "#FFFF99", "NM" = "#99FF99", "MF" = "#33CC33"))
+
 # ============================================================================
-# DEPTH CONFIGURATION
+# ECOSYSTEM-SPECIFIC DEPTH CONFIGURATION
 # ============================================================================
+# Different ecosystems have distinct soil profile characteristics:
+# - Forests: O-horizon organic layer, A-horizon, mineral horizons
+# - Grasslands: Deep root penetration, potential buried horizons
+# - Wetlands: Deep peat accumulation, extended profiles
 
 # VM0033 standard depth intervals (cm) - depth midpoints for harmonization
 # These correspond to VM0033 depth layers: 0-15, 15-30, 30-50, 50-100 cm
 VM0033_DEPTH_MIDPOINTS <- c(7.5, 22.5, 40, 75)
 
-# VM0033 depth intervals (cm) - for mass-weighted aggregation
+# VM0033 depth intervals (cm) - for mass-weighted aggregation (coastal default)
 VM0033_DEPTH_INTERVALS <- data.frame(
   depth_top = c(0, 15, 30, 50),
   depth_bottom = c(15, 30, 50, 100),
@@ -67,14 +101,69 @@ VM0033_DEPTH_INTERVALS <- data.frame(
   thickness_cm = c(15, 15, 20, 50)
 )
 
+# ============================================================================
+# ECOSYSTEM-SPECIFIC DEPTH INTERVALS
+# ============================================================================
+
+# Forest depths - includes O-horizon organic layer, A-horizon, and mineral soils
+FOREST_DEPTHS <- data.frame(
+  depth_top = c(0, 0, 10, 30),
+  depth_bottom = c(10, 10, 30, 100),
+  layer_type = c("O_horizon", "A_horizon", "mineral", "deep_mineral")
+)
+
+# Grassland depths - moderate profile with root zone emphasis
+GRASSLAND_DEPTHS <- data.frame(
+  depth_top = c(0, 15, 30),
+  depth_bottom = c(15, 30, 100)
+)
+
+# Wetland depths - deep peat accumulation possible
+WETLAND_DEPTHS <- data.frame(
+  depth_top = c(0, 15, 50),
+  depth_bottom = c(15, 50, 150)  # Extended depth for peat
+)
+
+#' Get ecosystem-specific depth intervals
+#'
+#' @param ecosystem_type Character string indicating ecosystem type
+#' @return Data frame with depth_top and depth_bottom columns
+#' @examples
+#' get_depth_intervals("Forest_Deciduous")
+#' get_depth_intervals("Wetland_Forested")
+#' get_depth_intervals("Grassland_Native")
+get_depth_intervals <- function(ecosystem_type) {
+  if (grepl("Forest", ecosystem_type, ignore.case = TRUE)) {
+    return(FOREST_DEPTHS)
+  }
+  if (grepl("Grassland", ecosystem_type, ignore.case = TRUE)) {
+    return(GRASSLAND_DEPTHS)
+  }
+  if (grepl("Wetland", ecosystem_type, ignore.case = TRUE)) {
+    return(WETLAND_DEPTHS)
+  }
+  # Fallback to VM0033 standard intervals for coastal/unknown ecosystems
+  return(VM0033_DEPTH_INTERVALS)
+}
+
+#' Get standard depth midpoints for an ecosystem type
+#'
+#' @param ecosystem_type Character string indicating ecosystem type
+#' @return Numeric vector of depth midpoints (cm)
+get_standard_depths <- function(ecosystem_type) {
+  intervals <- get_depth_intervals(ecosystem_type)
+  return((intervals$depth_top + intervals$depth_bottom) / 2)
+}
+
 # Standard depths for harmonization (VM0033 midpoints are default)
 STANDARD_DEPTHS <- VM0033_DEPTH_MIDPOINTS
 
 # Fine-scale depth intervals (optional, for detailed analysis)
 FINE_SCALE_DEPTHS <- c(0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100)
 
-# Maximum core depth (cm)
-MAX_CORE_DEPTH <- 100
+# Maximum core depth (cm) - ecosystem-specific
+MAX_CORE_DEPTH <- 100  # Default for coastal/forest
+MAX_CORE_DEPTH_WETLAND <- 150  # Extended for deep peat
 
 # Key depth intervals for reporting (cm)
 REPORTING_DEPTHS <- list(

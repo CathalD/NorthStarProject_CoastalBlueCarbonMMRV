@@ -69,81 +69,197 @@ get_diagnostics <- function(core_df, fitted_vals, target_depths) {
   }, error = function(e) return(list(rmse=NA, r2=NA, n_samples=nrow(core_df))))
 }
 
-#' Hybrid Fit: Spline (Interp) + Decay (Extrap)
+#' Legacy Hybrid Fit: Spline (Interp) + Decay (Extrap) - Coastal Default
 fit_hybrid_profile <- function(depths, values, target_depths) {
+  # Wrapper for backward compatibility - calls terrestrial version with NULL ecosystem
+  return(fit_hybrid_profile_terrestrial(depths, values, target_depths, ecosystem_type = NULL))
+}
+
+#' Ecosystem-Aware Hybrid Fit: Spline (Interp) + Decay (Extrap)
+#'
+#' Selects spline method based on ecosystem type and profile characteristics:
+#' - Grasslands: Hyman spline allows increasing C with depth (buried horizons/roots)
+#' - Forests: Natural spline handles O-horizon spikes better
+#' - Wetlands: Monotonic decreasing (monoH.FC) for typical peat profiles
+#'
+#' @param depths Numeric vector of measured depth midpoints (cm)
+#' @param values Numeric vector of SOC values at those depths (g/kg)
+#' @param target_depths Numeric vector of target depths for harmonization
+#' @param ecosystem_type Character string indicating ecosystem type (e.g., "Forest_Deciduous")
+#' @return Numeric vector of predicted SOC values at target depths
+fit_hybrid_profile_terrestrial <- function(depths, values, target_depths, ecosystem_type) {
   if (length(depths) < 2) return(NULL)
-  max_measured <- max(depths)
-  
-  # 1. Interpolation (Spline)
-  spline_fun <- tryCatch(splinefun(x=depths, y=values, method="monoH.FC"), error=function(e) NULL)
-  if(is.null(spline_fun)) return(NULL)
-  
-  # 2. Extrapolation (Decay)
-  decay_model <- NULL
-  is_decreasing <- cor(depths, values, method="spearman", use="complete.obs") < -0.3
-  
-  if (!is.na(is_decreasing) && is_decreasing && length(depths) >= 3) {
-    try({ decay_model <- lm(log(values + 0.1) ~ depths) }, silent=TRUE)
+
+  # 1. Detect profile shape & Select Spline Method
+  profile_trend <- cor(depths, values, method = "spearman", use = "complete.obs")
+
+  # Handle NA correlation
+  if (is.na(profile_trend)) profile_trend <- -0.5  # Assume decreasing if can't compute
+
+  # Select spline method based on ecosystem type and profile trend
+  if (!is.null(ecosystem_type) && grepl("Grassland", ecosystem_type, ignore.case = TRUE) && profile_trend > 0.3) {
+    # Hyman spline allows increasing C with depth (e.g., buried horizons/roots)
+    spline_fun <- tryCatch(
+      splinefun(x = depths, y = values, method = "hyman"),
+      error = function(e) {
+        # Fallback to monoH.FC if hyman fails (e.g., non-monotonic data)
+        tryCatch(splinefun(x = depths, y = values, method = "monoH.FC"), error = function(e) NULL)
+      }
+    )
+  } else if (!is.null(ecosystem_type) && grepl("Forest", ecosystem_type, ignore.case = TRUE)) {
+    # Natural spline handles O-horizon spikes better
+    spline_fun <- tryCatch(
+      splinefun(x = depths, y = values, method = "natural"),
+      error = function(e) {
+        tryCatch(splinefun(x = depths, y = values, method = "monoH.FC"), error = function(e) NULL)
+      }
+    )
+  } else {
+    # Monotonic decreasing for wetlands and coastal (default)
+    spline_fun <- tryCatch(
+      splinefun(x = depths, y = values, method = "monoH.FC"),
+      error = function(e) NULL
+    )
   }
-  
+
+  if (is.null(spline_fun)) return(NULL)
+
+  # 2. Extrapolation Logic with ecosystem-specific decay
+  max_d <- max(depths, na.rm = TRUE)
   preds <- numeric(length(target_depths))
-  
+
   for (i in seq_along(target_depths)) {
     d <- target_depths[i]
-    if (d <= max_measured) {
-      preds[i] <- spline_fun(d) # Interpolate
+    if (d <= max_d) {
+      # Interpolation region - use spline
+      preds[i] <- spline_fun(d)
     } else {
-      # Extrapolate (Limit to 2.5x depth)
-      if (d > max_measured * 2.5) { 
-        preds[i] <- NA 
-      } else if (!is.null(decay_model) && coef(decay_model)[2] < 0) {
-        preds[i] <- exp(predict(decay_model, newdata=data.frame(depths=d)))
+      # Extrapolation region - limit to reasonable depth extension
+      if (d > max_d * 2.5) {
+        preds[i] <- NA
       } else {
-        preds[i] <- values[which.max(depths)] # Constant fallback
+        # Ecosystem-specific decay factor for deep extrapolation
+        decay_factor <- if (!is.null(ecosystem_type)) {
+          dplyr::case_when(
+            grepl("Wetland", ecosystem_type, ignore.case = TRUE) ~ 0.95,  # Peat persists deep
+            grepl("Forest", ecosystem_type, ignore.case = TRUE) ~ 0.70,   # Mineral stabilizes
+            grepl("Grassland", ecosystem_type, ignore.case = TRUE) ~ 0.50,# Faster decline
+            TRUE ~ 0.60  # Default moderate decay
+          )
+        } else {
+          0.60  # Default for NULL ecosystem type
+        }
+
+        # Apply decay from deepest measured value
+        preds[i] <- values[which.max(depths)] * decay_factor
       }
     }
   }
+
   return(pmax(0, preds))
 }
 
 process_core <- function(core_df) {
-  # Fit SOC & BD
-  soc_pred <- fit_hybrid_profile(core_df$depth_cm, core_df$soc_g_kg, STANDARD_DEPTHS)
-  
+  # Detect ecosystem type from stratum (if available)
+  stratum <- unique(core_df$stratum)[1]
+  ecosystem_type <- detect_ecosystem_type(stratum)
+
+  # Get ecosystem-specific depth intervals dynamically
+  if (exists("get_depth_intervals", mode = "function")) {
+    depth_intervals <- get_depth_intervals(ecosystem_type)
+    target_depths <- (depth_intervals$depth_top + depth_intervals$depth_bottom) / 2
+    thickness <- depth_intervals$depth_bottom - depth_intervals$depth_top
+  } else {
+    # Fallback to default VM0033 depths
+    target_depths <- STANDARD_DEPTHS
+    thickness <- VM0033_THICKNESS
+  }
+
+  # Fit SOC using ecosystem-aware function
+  soc_pred <- fit_hybrid_profile_terrestrial(
+    depths = core_df$depth_cm,
+    values = core_df$soc_g_kg,
+    target_depths = target_depths,
+    ecosystem_type = ecosystem_type
+  )
+
   # BD extrapolation: Constant is safer
-  bd_spline <- tryCatch(splinefun(core_df$depth_cm, core_df$bulk_density_g_cm3, method="monoH.FC"), error=function(e) NULL)
-  if(is.null(bd_spline)) return(NULL)
-  
+  bd_spline <- tryCatch(
+    splinefun(core_df$depth_cm, core_df$bulk_density_g_cm3, method = "monoH.FC"),
+    error = function(e) NULL
+  )
+  if (is.null(bd_spline)) return(NULL)
+
   bd_last <- core_df$bulk_density_g_cm3[which.max(core_df$depth_cm)]
-  bd_pred <- sapply(STANDARD_DEPTHS, function(d) {
-    if(d <= max(core_df$depth_cm)) bd_spline(d) else bd_last
+  bd_pred <- sapply(target_depths, function(d) {
+    if (d <= max(core_df$depth_cm)) bd_spline(d) else bd_last
   })
-  
+
   if (is.null(soc_pred)) return(NULL)
-  
+
   # Calculate Diagnostics
-  diag <- get_diagnostics(core_df, soc_pred, STANDARD_DEPTHS)
-  
+  diag <- get_diagnostics(core_df, soc_pred, target_depths)
+
   # Build Result
   res <- data.frame(
     core_id = unique(core_df$core_id)[1],
-    stratum = unique(core_df$stratum)[1],
-    depth_cm_midpoint = STANDARD_DEPTHS,
-    thickness_cm = VM0033_THICKNESS,
+    stratum = stratum,
+    ecosystem_type = ecosystem_type,
+    depth_cm_midpoint = target_depths,
+    thickness_cm = thickness,
     soc_harmonized = soc_pred,
     bd_harmonized = bd_pred,
     latitude = unique(core_df$latitude)[1],
     longitude = unique(core_df$longitude)[1],
-    is_extrapolated = STANDARD_DEPTHS > max(core_df$depth_cm),
+    is_extrapolated = target_depths > max(core_df$depth_cm),
     rmse = diag$rmse,
     r2 = diag$r2
   )
-  
+
   # Calculate Stock (kg/m2)
   # Corrected Formula: SOC(g/kg) * BD(g/cm3) * Thick(cm) / 100
   res$carbon_stock_kg_m2 <- (res$soc_harmonized * res$bd_harmonized * res$thickness_cm) / 100
-  
+
   return(res)
+}
+
+#' Detect ecosystem type from stratum name
+#'
+#' Parses the stratum name to identify the ecosystem type component.
+#' Supports both new two-tier strata (e.g., "Wetland_Forested_Reference")
+#' and legacy coastal strata (e.g., "IM", "NM", "MF").
+#'
+#' @param stratum Character string of stratum name
+#' @return Character string of detected ecosystem type
+detect_ecosystem_type <- function(stratum) {
+  if (is.null(stratum) || is.na(stratum)) return("Unknown")
+
+  # Check for new ecosystem types (two-tier stratification)
+  if (grepl("Wetland", stratum, ignore.case = TRUE)) {
+    return(ifelse(grepl("Forested", stratum, ignore.case = TRUE),
+                  "Wetland_Forested", "Wetland_Emergent"))
+  }
+  if (grepl("Forest", stratum, ignore.case = TRUE)) {
+    return(ifelse(grepl("Deciduous", stratum, ignore.case = TRUE),
+                  "Forest_Deciduous", "Forest_Coniferous"))
+  }
+  if (grepl("Grassland", stratum, ignore.case = TRUE)) {
+    return(ifelse(grepl("Native", stratum, ignore.case = TRUE),
+                  "Grassland_Native", "Grassland_Restored"))
+  }
+
+  # Legacy coastal strata mapping
+  legacy_mapping <- list(
+    "IM" = "Wetland_Emergent",   # Intact Marsh -> Wetland
+    "NM" = "Wetland_Emergent",   # New Marsh -> Wetland
+    "MF" = "Wetland_Emergent"    # Mudflat -> Wetland (conservative)
+  )
+
+  if (toupper(stratum) %in% names(legacy_mapping)) {
+    return(legacy_mapping[[toupper(stratum)]])
+  }
+
+  return("Unknown")  # Fallback
 }
 
 # ============================================================================

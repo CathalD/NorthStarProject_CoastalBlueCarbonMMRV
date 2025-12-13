@@ -717,9 +717,239 @@ if (CONFIG.includeBiomassProxies) {
     canopyHeightProxy,
     productivityProxy
   ]);
-  
+
   print('✓ Biomass proxies processed:', biomassProxies.bandNames());
 }
+
+// ============================================================================
+// SECTION 8B: TERRESTRIAL ECOSYSTEM COVARIATES (NEW)
+// ============================================================================
+// These covariates are crucial for terrestrial carbon modeling (forests,
+// grasslands, wetlands) and expand the coastal focus to landscape-scale MMRV.
+
+print('\n=== Processing Terrestrial Ecosystem Covariates ===');
+
+// -----------------------------------------------------------------------------
+// 1. STRUCTURE & STRESS INDICES (NBR, NDMI)
+// -----------------------------------------------------------------------------
+
+// Add NBR and NDMI to the optical indices function
+function addTerrestrialIndices(image) {
+  // Normalized Burn Ratio (NBR) - Fire/disturbance detection
+  // NBR = (NIR - SWIR2) / (NIR + SWIR2)
+  // High values: healthy vegetation, Low/negative: burned/stressed
+  var nbr = image.normalizedDifference(['B8', 'B12']).rename('NBR');
+
+  // Normalized Difference Moisture Index (NDMI) - Vegetation water content
+  // NDMI = (NIR - SWIR1) / (NIR + SWIR1)
+  // High values: high canopy moisture, Low: water-stressed vegetation
+  var ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI');
+
+  // dNBR proxy - change detection (requires multi-temporal)
+  // For now, calculate NBR temporal variability as disturbance indicator
+
+  return image.addBands([nbr, ndmi]);
+}
+
+// Apply terrestrial indices to S2 collection
+var s2_terrestrial = s2.map(addTerrestrialIndices);
+
+// Calculate NBR metrics
+var nbrMetrics = ee.Image.cat([
+  s2_terrestrial.select('NBR').median().rename('NBR_median_annual'),
+  s2_terrestrial.select('NBR').mean().rename('NBR_mean_annual'),
+  s2_terrestrial.select('NBR').min().rename('NBR_min_annual'),  // Detects recent burns
+  s2_terrestrial.select('NBR').reduce(ee.Reducer.stdDev()).rename('NBR_stddev_annual'),
+
+  // Growing season NBR
+  s2_growing.map(addTerrestrialIndices).select('NBR').median().rename('NBR_median_growing'),
+
+  // NDMI metrics
+  s2_terrestrial.select('NDMI').median().rename('NDMI_median_annual'),
+  s2_terrestrial.select('NDMI').mean().rename('NDMI_mean_annual'),
+  s2_terrestrial.select('NDMI').reduce(ee.Reducer.stdDev()).rename('NDMI_stddev_annual'),
+  s2_growing.map(addTerrestrialIndices).select('NDMI').median().rename('NDMI_median_growing')
+]);
+
+print('✓ NBR/NDMI stress indices processed:', nbrMetrics.bandNames());
+
+// -----------------------------------------------------------------------------
+// 2. HIGH-RESOLUTION TERRAIN (USGS 3DEP 10m)
+// -----------------------------------------------------------------------------
+
+print('  Loading USGS 3DEP 10m DEM for terrain analysis...');
+
+// Use USGS 3DEP 10m DEM (best available for North America)
+// Fallback to CDEM if outside US
+var dem3dep = ee.ImageCollection('USGS/3DEP/10m').mosaic();
+var demCanada = ee.ImageCollection('NRCan/CDEM').mosaic();
+
+// Merge: prefer 3DEP where available, fill with CDEM
+var demHighRes = ee.ImageCollection([
+  dem3dep.rename('elevation'),
+  demCanada.rename('elevation')
+]).mosaic().clip(CONFIG.aoi);
+
+var terrainSlope = ee.Terrain.slope(demHighRes).rename('slope_3dep');
+var terrainAspect = ee.Terrain.aspect(demHighRes).rename('aspect_3dep');
+
+// Calculate proper TWI (Topographic Wetness Index)
+// TWI = ln(contributing_area / tan(slope))
+// This is crucial for predicting soil carbon (wetness controls decomposition)
+
+// Method 1: Simple TWI approximation using slope
+// True TWI requires flow accumulation which is computationally intensive
+var slopeRad = terrainSlope.multiply(Math.PI).divide(180);
+var tanSlope = slopeRad.tan().max(0.001);  // Avoid division by zero
+
+// Approximate contributing area using focal max (proxy for flow accumulation)
+var contributingAreaProxy = demHighRes.multiply(-1)
+  .focal_max({kernel: ee.Kernel.circle({radius: 100, units: 'meters'})})
+  .multiply(-1)
+  .subtract(demHighRes)
+  .abs()
+  .add(1);  // Add 1 to avoid log(0)
+
+// TWI calculation
+var twi = contributingAreaProxy.divide(tanSlope).log().rename('TWI');
+
+// QA check TWI range
+var twiStats = twi.reduceRegion({
+  reducer: ee.Reducer.percentile([5, 50, 95]),
+  geometry: CONFIG.aoi,
+  scale: 30,
+  maxPixels: 1e9,
+  bestEffort: true
+});
+print('QA - TWI Distribution:', twiStats);
+
+// Curvature (plan and profile) - important for soil moisture
+var demSmooth = demHighRes.focal_mean(30, 'circle', 'meters');
+var profileCurvature = ee.Terrain.slope(ee.Terrain.slope(demSmooth)).rename('profile_curvature');
+var planCurvature = ee.Terrain.aspect(demSmooth)
+  .focal_mean(30, 'circle', 'meters')
+  .subtract(ee.Terrain.aspect(demSmooth))
+  .abs()
+  .rename('plan_curvature');
+
+// Combine terrain features
+var terrainTerrestrial = ee.Image.cat([
+  demHighRes.rename('elevation_3dep'),
+  terrainSlope,
+  terrainAspect,
+  twi,
+  profileCurvature,
+  planCurvature
+]);
+
+print('✓ High-resolution terrain processed:', terrainTerrestrial.bandNames());
+
+// -----------------------------------------------------------------------------
+// 3. PHENOLOGY METRICS (NDVI Seasonality)
+// -----------------------------------------------------------------------------
+
+print('  Calculating phenology metrics...');
+
+// NDVI phenology - critical for distinguishing ecosystem types and health
+var ndviCollection = s2.select('NDVI');
+
+// Key phenology metrics
+var ndviMax = ndviCollection.max().rename('NDVI_max_phenology');
+var ndviMin = ndviCollection.min().rename('NDVI_min_phenology');
+var ndviAmplitude = ndviMax.subtract(ndviMin).rename('NDVI_amplitude_phenology');
+
+// Season of maximum greenness (day of year proxy)
+// Calculate which month has highest NDVI (rough phenology timing)
+var monthlyNDVI = ee.List.sequence(1, 12).map(function(month) {
+  var monthFilter = s2.filter(ee.Filter.calendarRange(month, month, 'month'));
+  return monthFilter.select('NDVI').median()
+    .set('month', month);
+});
+
+// Rate of greenup (spring phenology)
+// Compare early growing season to peak season
+var earlyGrowing = s2.filter(ee.Filter.calendarRange(
+  CONFIG.growingSeasonStartMonth,
+  CONFIG.growingSeasonStartMonth + 1,
+  'month'
+)).select('NDVI').median();
+
+var peakGrowing = s2.filter(ee.Filter.calendarRange(
+  CONFIG.growingSeasonStartMonth + 2,
+  CONFIG.growingSeasonStartMonth + 3,
+  'month'
+)).select('NDVI').median();
+
+var greenupRate = peakGrowing.subtract(earlyGrowing).rename('NDVI_greenup_rate');
+
+// Rate of senescence (fall phenology)
+var lateGrowing = s2.filter(ee.Filter.calendarRange(
+  CONFIG.growingSeasonEndMonth - 1,
+  CONFIG.growingSeasonEndMonth,
+  'month'
+)).select('NDVI').median();
+
+var senescenceRate = peakGrowing.subtract(lateGrowing).rename('NDVI_senescence_rate');
+
+// Integrated growing season NDVI (productivity proxy)
+var integratedNDVI = s2_growing.select('NDVI').sum()
+  .divide(s2_growing.select('NDVI').count())
+  .multiply(s2_growing.select('NDVI').count())
+  .rename('NDVI_integrated_growing');
+
+// Combine phenology metrics
+var phenologyMetrics = ee.Image.cat([
+  ndviMax,
+  ndviMin,
+  ndviAmplitude,
+  greenupRate,
+  senescenceRate,
+  integratedNDVI
+]);
+
+print('✓ Phenology metrics processed:', phenologyMetrics.bandNames());
+
+// -----------------------------------------------------------------------------
+// 4. INTERACTION TERMS (for Random Forest modeling)
+// -----------------------------------------------------------------------------
+
+print('  Calculating interaction terms for RF modeling...');
+
+// NDVI × TWI interaction (vegetation-wetness interaction)
+// Key predictor for soil carbon in terrestrial ecosystems
+var ndviForInteraction = s2_growing.select('NDVI').median();
+var ndviXtwi = ndviForInteraction.multiply(twi).rename('NDVI_x_TWI');
+
+// NBR × Slope interaction (disturbance × erosion potential)
+var nbrForInteraction = s2_terrestrial.select('NBR').median();
+var nbrXslope = nbrForInteraction.multiply(terrainSlope).rename('NBR_x_Slope');
+
+// NDMI × Elevation interaction (moisture × position)
+var ndmiForInteraction = s2_terrestrial.select('NDMI').median();
+var ndmiXelev = ndmiForInteraction.multiply(demHighRes).divide(100).rename('NDMI_x_Elev');
+
+// Combine interaction terms
+var interactionTerms = ee.Image.cat([
+  ndviXtwi,
+  nbrXslope,
+  ndmiXelev
+]);
+
+print('✓ Interaction terms processed:', interactionTerms.bandNames());
+
+// -----------------------------------------------------------------------------
+// 5. COMBINE ALL TERRESTRIAL COVARIATES
+// -----------------------------------------------------------------------------
+
+var terrestrialCovariates = ee.Image.cat([
+  nbrMetrics,
+  terrainTerrestrial,
+  phenologyMetrics,
+  interactionTerms
+]);
+
+print('✓ All terrestrial covariates processed:', terrestrialCovariates.bandNames().length(), 'bands');
+print('  Bands:', terrestrialCovariates.bandNames());
 
 // ============================================================================
 // SECTION 9: SEDIMENT DYNAMICS INDICATORS (BLUE CARBON SPECIFIC)
@@ -1007,7 +1237,9 @@ var allFeatures = ee.Image.cat([
   salinityProxies,
   biomassProxies,
   sedimentDynamics,
-  vegetationClassification
+  vegetationClassification,
+  // NEW: Terrestrial ecosystem covariates
+  terrestrialCovariates
 ]).clip(CONFIG.aoi).toFloat();
 
 print('Total covariate bands:', allFeatures.bandNames().length().getInfo());
@@ -1158,4 +1390,12 @@ print('• Verify NDWI patterns match known water distribution');
 print('• Review biomass proxies in vegetated zones');
 print('• Use salinity proxies to stratify samples if needed');
 print('• Check lateral transport potential for carbon export zones');
-print('\n🌊 Ready for blue carbon modeling!');
+print('');
+print('💡 TERRESTRIAL MMRV BEST PRACTICES (NEW):');
+print('• Use NBR to identify recent burns and disturbance history');
+print('• TWI is critical for predicting soil carbon in upland areas');
+print('• NDVI_amplitude distinguishes ecosystem types (forest vs grassland)');
+print('• Use NDVI_x_TWI interaction for RF-based carbon mapping');
+print('• Check phenology metrics for ecosystem health assessment');
+print('• Compare NBR_min to historical fire records');
+print('\n🌲🌊 Ready for landscape-scale MMRV modeling!');

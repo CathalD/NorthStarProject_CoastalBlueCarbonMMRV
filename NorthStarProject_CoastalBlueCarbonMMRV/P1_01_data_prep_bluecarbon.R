@@ -445,6 +445,120 @@ samples <- samples %>%
 log_message("Calculated depth midpoints and interval thickness")
 
 # ============================================================================
+# LOAD MANAGEMENT HISTORY (NEW: Terrestrial Ecosystem Support)
+# ============================================================================
+# Management history is critical for terrestrial MMRV to understand:
+# - Disturbance legacy effects on soil carbon
+# - Recovery trajectories for restored sites
+# - Carbon accumulation rates by management class
+
+log_message("Checking for management history data...")
+
+if (file.exists("data_raw/management_history.csv")) {
+  log_message("Loading management history data...")
+
+  mg_hist <- read_csv("data_raw/management_history.csv", show_col_types = FALSE) %>%
+    rename_with(tolower) %>%
+    mutate(
+      # Calculate years since disturbance/restoration events
+      years_since_disturbance = as.numeric(format(Sys.Date(), "%Y")) - disturbance_year,
+      years_since_restoration = as.numeric(format(Sys.Date(), "%Y")) - restoration_year,
+
+      # Classify recovery stage based on time since restoration
+      recovery_class = case_when(
+        is.na(restoration_year) ~ "Reference",
+        years_since_restoration < 5 ~ "Early_Recovery",
+        years_since_restoration >= 5 & years_since_restoration < 15 ~ "Mid_Recovery",
+        years_since_restoration >= 15 ~ "Established_Recovery",
+        TRUE ~ "Unknown"
+      ),
+
+      # Disturbance legacy classification
+      disturbance_legacy = case_when(
+        is.na(disturbance_year) ~ "None",
+        years_since_disturbance < 5 ~ "Recent",
+        years_since_disturbance >= 5 & years_since_disturbance < 20 ~ "Historic",
+        years_since_disturbance >= 20 ~ "Legacy",
+        TRUE ~ "Unknown"
+      )
+    )
+
+  log_message(sprintf("Loaded management history for %d sites", n_distinct(mg_hist$site_id)))
+
+  # Report management history summary
+  cat("\n========================================\n")
+  cat("MANAGEMENT HISTORY SUMMARY\n")
+  cat("========================================\n\n")
+
+  # Recovery class distribution
+  recovery_summary <- mg_hist %>%
+    group_by(recovery_class) %>%
+    summarise(n_sites = n(), .groups = "drop")
+  cat("Recovery Class Distribution:\n")
+  print(as.data.frame(recovery_summary))
+
+  # Disturbance legacy distribution
+  disturbance_summary <- mg_hist %>%
+    group_by(disturbance_legacy) %>%
+    summarise(n_sites = n(), .groups = "drop")
+  cat("\nDisturbance Legacy Distribution:\n")
+  print(as.data.frame(disturbance_summary))
+
+  cat("\n")
+
+  # Store raw_data before joining (samples is raw_data in context of loading)
+  raw_data <- samples
+
+  # Join management history to samples via site_id
+  # Check if site_id column exists in samples
+  if ("site_id" %in% names(raw_data)) {
+    raw_data <- raw_data %>%
+      left_join(mg_hist, by = "site_id")
+
+    n_matched <- sum(!is.na(raw_data$recovery_class))
+    n_total <- nrow(raw_data)
+    log_message(sprintf("Joined management history: %d/%d samples matched (%.1f%%)",
+                       n_matched, n_total, 100 * n_matched / n_total))
+
+    if (n_matched < n_total) {
+      log_message("Some samples lack management history - will use 'Reference' defaults", "WARNING")
+      raw_data <- raw_data %>%
+        mutate(
+          recovery_class = ifelse(is.na(recovery_class), "Reference", recovery_class),
+          disturbance_legacy = ifelse(is.na(disturbance_legacy), "None", disturbance_legacy),
+          years_since_disturbance = ifelse(is.na(years_since_disturbance), NA_real_, years_since_disturbance),
+          years_since_restoration = ifelse(is.na(years_since_restoration), NA_real_, years_since_restoration)
+        )
+    }
+
+    # Update samples with enriched data
+    samples <- raw_data
+
+  } else {
+    log_message("site_id column not found in samples - cannot join management history", "WARNING")
+    log_message("Add site_id column to core_samples.csv to enable management history integration", "WARNING")
+  }
+
+  # Save management history summary
+  write_csv(mg_hist, "diagnostics/data_prep/management_history_summary.csv")
+  log_message("Saved management history summary")
+
+} else {
+  log_message("No management_history.csv found - proceeding without management history", "INFO")
+  log_message("  To enable: Create data_raw/management_history.csv with columns:", "INFO")
+  log_message("    site_id, disturbance_year, disturbance_type, restoration_year, management_type", "INFO")
+
+  # Add placeholder columns for downstream compatibility
+  samples <- samples %>%
+    mutate(
+      recovery_class = "Reference",
+      disturbance_legacy = "None",
+      years_since_disturbance = NA_real_,
+      years_since_restoration = NA_real_
+    )
+}
+
+# ============================================================================
 # DATA QUALITY CHECKS
 # ============================================================================
 
